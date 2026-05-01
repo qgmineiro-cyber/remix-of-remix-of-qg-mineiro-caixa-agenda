@@ -1,54 +1,63 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useCaixa } from "@/contexts/CaixaContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Trash2, Plus } from "lucide-react";
 
-const SERVICOS_CATALOGO = [
-  { nome: "Corte", valor: 45 },
-  { nome: "Barba", valor: 30 },
-  { nome: "Corte + Barba", valor: 65 },
-  { nome: "Sobrancelha", valor: 15 },
-  { nome: "Progressiva", valor: 120 },
-  { nome: "Hidratação", valor: 80 },
-  { nome: "Outro", valor: 0 },
-];
-
 const FORMAS_PAGAMENTO = ["Dinheiro", "PIX", "Crédito", "Débito"];
 
 const Caixa = () => {
-  const { caixa, abrirCaixa, fecharCaixa, adicionarServico, removerUltimoServico } = useCaixa();
+  const { caixa, loadingCaixa, abrirCaixa, fecharCaixa, adicionarServico, removerUltimoServico } = useCaixa();
   const { user } = useAuth();
 
-  // Abertura
   const [troco, setTroco] = useState("");
-
-  // Lançamento
   const [showLancamento, setShowLancamento] = useState(false);
-  const [servicoSelecionado, setServicoSelecionado] = useState<string | null>(null);
+  const [showFechamento, setShowFechamento] = useState(false);
+  const [servicoSelecionado, setServicoSelecionado] = useState<{ id: string; nome: string; preco: number } | null>(null);
   const [valor, setValor] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("Dinheiro");
   const [observacao, setObservacao] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // Fechamento
-  const [showFechamento, setShowFechamento] = useState(false);
+  const { data: servicos = [] } = useQuery({
+    queryKey: ["servicos"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("servicos").select("*").eq("ativo", true).order("nome");
+      if (error) throw error;
+      return data;
+    },
+  });
 
-  const handleAbrirCaixa = () => {
-    abrirCaixa(parseFloat(troco) || 0);
+  const handleAbrirCaixa = async () => {
+    setLoading(true);
+    await abrirCaixa(parseFloat(troco) || 0);
     setTroco("");
+    setLoading(false);
   };
 
-  const handleLancar = () => {
+  const handleLancar = async () => {
     if (!servicoSelecionado || !valor) return;
-    adicionarServico({
-      nome: servicoSelecionado,
+    setLoading(true);
+    await adicionarServico({
+      nome: servicoSelecionado.nome,
       valor: parseFloat(valor),
       formaPagamento,
       observacao: observacao || undefined,
+      servicoId: servicoSelecionado.id !== "outro" ? servicoSelecionado.id : null,
     });
     setShowLancamento(false);
     setServicoSelecionado(null);
     setValor("");
     setObservacao("");
+    setLoading(false);
+  };
+
+  const handleFechar = async () => {
+    setLoading(true);
+    await fecharCaixa();
+    setShowFechamento(false);
+    setLoading(false);
   };
 
   const totalBruto = caixa.servicos.reduce((s, sv) => s + sv.valor, 0);
@@ -56,20 +65,27 @@ const Caixa = () => {
   const comissaoValor = totalBruto * (comissaoPerc / 100);
   const liquido = totalBruto - comissaoValor;
 
-  // Resumo por forma de pagamento
   const resumoPagamento = FORMAS_PAGAMENTO.map((fp) => ({
     forma: fp,
-    total: caixa.servicos.filter((s) => s.formaPagamento === fp).reduce((sum, s) => sum + s.valor, 0),
-    qtd: caixa.servicos.filter((s) => s.formaPagamento === fp).length,
+    total: caixa.servicos
+      .filter((s) => s.formaPagamento === fp || s.formaPagamento === fp.toLowerCase())
+      .reduce((sum, s) => sum + s.valor, 0),
+    qtd: caixa.servicos.filter((s) => s.formaPagamento === fp || s.formaPagamento === fp.toLowerCase()).length,
   })).filter((r) => r.qtd > 0);
 
-  // Caixa fechado - tela de abertura
+  if (loadingCaixa) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <p className="text-muted-foreground text-sm">Carregando caixa...</p>
+      </div>
+    );
+  }
+
   if (!caixa.aberto) {
     return (
       <div className="space-y-6 animate-fade-in max-w-md mx-auto">
         <h2 className="text-xl font-semibold">Abrir Caixa</h2>
         <p className="text-muted-foreground text-sm">Informe o valor de troco inicial para abrir o caixa.</p>
-
         <div>
           <label className="text-sm font-medium mb-1 block">Troco inicial (R$)</label>
           <input
@@ -80,39 +96,39 @@ const Caixa = () => {
             placeholder="0,00"
           />
         </div>
-
         <div className="text-sm text-muted-foreground">
           <p>Data: {new Date().toLocaleDateString("pt-BR")}</p>
           <p>Hora: {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
         </div>
-
         <button
           onClick={handleAbrirCaixa}
-          className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
+          disabled={loading}
+          className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
-          Abrir Caixa
+          {loading ? "Abrindo..." : "Abrir Caixa"}
         </button>
       </div>
     );
   }
 
-  // Tela de fechamento
   if (showFechamento) {
     return (
       <div className="space-y-6 animate-fade-in max-w-md mx-auto">
         <h2 className="text-xl font-semibold">Fechar Caixa</h2>
-
         <div className="space-y-3">
           <div className="rounded-lg border border-border p-4 bg-card">
             <p className="text-sm text-muted-foreground mb-2">Resumo por pagamento</p>
-            {resumoPagamento.map((r) => (
-              <div key={r.forma} className="flex justify-between text-sm py-1">
-                <span>{r.forma} ({r.qtd})</span>
-                <span className="font-medium">R$ {r.total.toFixed(2)}</span>
-              </div>
-            ))}
+            {resumoPagamento.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum lançamento.</p>
+            ) : (
+              resumoPagamento.map((r) => (
+                <div key={r.forma} className="flex justify-between text-sm py-1">
+                  <span>{r.forma} ({r.qtd})</span>
+                  <span className="font-medium">R$ {r.total.toFixed(2)}</span>
+                </div>
+              ))
+            )}
           </div>
-
           <div className="rounded-lg border border-border p-4 bg-card space-y-2">
             <div className="flex justify-between text-sm">
               <span>Total bruto</span>
@@ -128,58 +144,44 @@ const Caixa = () => {
             </div>
           </div>
         </div>
-
         <div className="flex gap-3">
-          <button
-            onClick={() => setShowFechamento(false)}
-            className="flex-1 py-3 rounded-lg border border-border font-medium hover:bg-accent transition-colors"
-          >
+          <button onClick={() => setShowFechamento(false)} className="flex-1 py-3 rounded-lg border border-border font-medium hover:bg-accent transition-colors">
             Voltar
           </button>
-          <button
-            onClick={() => {
-              fecharCaixa();
-              setShowFechamento(false);
-            }}
-            className="flex-1 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
-          >
-            Fechar Caixa
+          <button onClick={handleFechar} disabled={loading} className="flex-1 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+            {loading ? "Fechando..." : "Fechar Caixa"}
           </button>
         </div>
       </div>
     );
   }
 
-  // Modal de lançamento
   if (showLancamento) {
+    const servicosLista = [
+      ...servicos.map((s) => ({ id: s.id, nome: s.nome, preco: Number(s.preco) })),
+      { id: "outro", nome: "Outro", preco: 0 },
+    ];
+
     return (
       <div className="space-y-6 animate-fade-in max-w-md mx-auto">
         <h2 className="text-xl font-semibold">Lançar Serviço</h2>
-
         <div>
           <label className="text-sm font-medium mb-2 block">Serviço</label>
           <div className="grid grid-cols-2 gap-2">
-            {SERVICOS_CATALOGO.map((s) => (
+            {servicosLista.map((s) => (
               <button
-                key={s.nome}
-                onClick={() => {
-                  setServicoSelecionado(s.nome);
-                  if (s.valor > 0) setValor(s.valor.toString());
-                  else setValor("");
-                }}
+                key={s.id}
+                onClick={() => { setServicoSelecionado(s); setValor(s.preco > 0 ? s.preco.toString() : ""); }}
                 className={`py-3 px-4 rounded-lg border text-sm font-medium transition-colors ${
-                  servicoSelecionado === s.nome
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border hover:bg-accent"
+                  servicoSelecionado?.id === s.id ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-accent"
                 }`}
               >
                 {s.nome}
-                {s.valor > 0 && <span className="block text-xs mt-0.5 opacity-70">R$ {s.valor}</span>}
+                {s.preco > 0 && <span className="block text-xs mt-0.5 opacity-70">R$ {s.preco.toFixed(2)}</span>}
               </button>
             ))}
           </div>
         </div>
-
         <div>
           <label className="text-sm font-medium mb-1 block">Valor (R$)</label>
           <input
@@ -189,7 +191,6 @@ const Caixa = () => {
             className="w-full px-4 py-3 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-
         <div>
           <label className="text-sm font-medium mb-2 block">Pagamento</label>
           <div className="grid grid-cols-4 gap-2">
@@ -198,9 +199,7 @@ const Caixa = () => {
                 key={fp}
                 onClick={() => setFormaPagamento(fp)}
                 className={`py-2 px-3 rounded-lg border text-xs font-medium transition-colors ${
-                  formaPagamento === fp
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border hover:bg-accent"
+                  formaPagamento === fp ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-accent"
                 }`}
               >
                 {fp}
@@ -208,7 +207,6 @@ const Caixa = () => {
             ))}
           </div>
         </div>
-
         <div>
           <label className="text-sm font-medium mb-1 block">Observação (opcional)</label>
           <input
@@ -219,27 +217,25 @@ const Caixa = () => {
             placeholder="Ex: desconto, cortesia..."
           />
         </div>
-
         <div className="flex gap-3">
           <button
-            onClick={() => setShowLancamento(false)}
+            onClick={() => { setShowLancamento(false); setServicoSelecionado(null); setValor(""); setObservacao(""); }}
             className="flex-1 py-3 rounded-lg border border-border font-medium hover:bg-accent transition-colors"
           >
             Cancelar
           </button>
           <button
             onClick={handleLancar}
-            disabled={!servicoSelecionado || !valor}
+            disabled={!servicoSelecionado || !valor || loading}
             className="flex-1 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
           >
-            Confirmar
+            {loading ? "Salvando..." : "Confirmar"}
           </button>
         </div>
       </div>
     );
   }
 
-  // Caixa aberto - tela principal
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -247,10 +243,7 @@ const Caixa = () => {
           <h2 className="text-xl font-semibold">Caixa Aberto</h2>
           <p className="text-sm text-muted-foreground">Desde {caixa.abertoDesde}</p>
         </div>
-        <button
-          onClick={() => setShowFechamento(true)}
-          className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-accent transition-colors"
-        >
+        <button onClick={() => setShowFechamento(true)} className="px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-accent transition-colors">
           Fechar Caixa
         </button>
       </div>
@@ -263,7 +256,6 @@ const Caixa = () => {
         Lançar Serviço
       </button>
 
-      {/* Resumo rápido */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-lg border border-border p-3 bg-card text-center">
           <p className="text-xl font-bold">{caixa.servicos.length}</p>
@@ -279,7 +271,6 @@ const Caixa = () => {
         </div>
       </div>
 
-      {/* Lista de lançamentos */}
       <div>
         <h3 className="font-medium mb-3">Lançamentos do dia</h3>
         {caixa.servicos.length === 0 ? (
@@ -291,18 +282,13 @@ const Caixa = () => {
                 <div>
                   <p className="font-medium text-sm">{s.nome}</p>
                   <p className="text-xs text-muted-foreground">
-                    {s.hora} · {s.formaPagamento}
-                    {s.observacao && ` · ${s.observacao}`}
+                    {s.hora} · {s.formaPagamento}{s.observacao && ` · ${s.observacao}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-sm">R$ {s.valor.toFixed(2)}</p>
                   {i === 0 && (
-                    <button
-                      onClick={removerUltimoServico}
-                      className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-destructive"
-                      title="Remover último"
-                    >
+                    <button onClick={removerUltimoServico} className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-destructive">
                       <Trash2 size={14} />
                     </button>
                   )}

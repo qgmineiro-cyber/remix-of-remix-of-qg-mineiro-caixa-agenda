@@ -1,114 +1,98 @@
 import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { Plus, Edit2, Trash2 } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import StatusBadge from "@/components/StatusBadge";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "@/hooks/use-toast";
-import {
-  ContaReceber,
-  FORMAS_PAGAMENTO,
-  ReceberStatus,
-  formatBRL,
-  formatDateBR,
-  todayISO,
-} from "./types";
+import { formatBRL, formatDateBR } from "./types";
 
-const SEED: ContaReceber[] = [
-  {
-    id: "1",
-    descricao: "Mensalista — João",
-    origem: "João Silva",
-    valor: 180,
-    vencimento: "2026-05-06",
-    formaPagamento: "Pix",
-    status: "aberto",
-  },
-  {
-    id: "2",
-    descricao: "Pacote 10 cortes",
-    origem: "Pedro Souza",
-    valor: 350,
-    vencimento: "2026-05-10",
-    formaPagamento: "Crédito",
-    status: "aberto",
-  },
+type ReceberStatus = "aberto" | "recebido" | "vencido";
+
+const FORMAS = [
+  { value: "dinheiro", label: "Dinheiro" },
+  { value: "pix", label: "PIX" },
+  { value: "debito", label: "Débito" },
+  { value: "credito", label: "Crédito" },
+  { value: "boleto", label: "Boleto" },
 ];
 
 const STATUS_TONE: Record<ReceberStatus, "warning" | "success" | "danger"> = {
-  aberto: "warning",
-  recebido: "success",
-  vencido: "danger",
+  aberto: "warning", recebido: "success", vencido: "danger",
 };
-
 const STATUS_LABEL: Record<ReceberStatus, string> = {
-  aberto: "Em aberto",
-  recebido: "Recebido",
-  vencido: "Vencido",
+  aberto: "Em aberto", recebido: "Recebido", vencido: "Vencido",
 };
 
 const ContasReceber = () => {
-  const [contas, setContas] = useState<ContaReceber[]>(SEED);
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<ContaReceber | null>(null);
+  const [editing, setEditing] = useState<any | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
-
   const [filterStatus, setFilterStatus] = useState("todos");
   const [filterOrigem, setFilterOrigem] = useState("");
   const [filterFrom, setFilterFrom] = useState("");
   const [filterTo, setFilterTo] = useState("");
 
-  const filtered = useMemo(
-    () =>
-      contas.filter((c) => {
-        if (filterStatus !== "todos" && c.status !== filterStatus) return false;
-        if (filterOrigem && !c.origem.toLowerCase().includes(filterOrigem.toLowerCase())) return false;
-        if (filterFrom && c.vencimento < filterFrom) return false;
-        if (filterTo && c.vencimento > filterTo) return false;
-        return true;
-      }),
-    [contas, filterStatus, filterOrigem, filterFrom, filterTo],
+  const { data: contas = [], isLoading } = useQuery({
+    queryKey: ["contas_receber"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("contas_receber").select("*").order("vencimento");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (form: any) => {
+      if (editing?.id) {
+        const { error } = await supabase.from("contas_receber").update(form).eq("id", editing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("contas_receber").insert(form);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contas_receber"] });
+      setOpen(false);
+      setEditing(null);
+      toast({ title: editing ? "Conta atualizada" : "Conta cadastrada" });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Erro ao salvar", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("contas_receber").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contas_receber"] });
+      toast({ title: "Conta removida" });
+    },
+  });
+
+  const filtered = useMemo(() =>
+    contas.filter((c: any) => {
+      if (filterStatus !== "todos" && c.status !== filterStatus) return false;
+      if (filterOrigem && !(c.origem || "").toLowerCase().includes(filterOrigem.toLowerCase())) return false;
+      if (filterFrom && c.vencimento < filterFrom) return false;
+      if (filterTo && c.vencimento > filterTo) return false;
+      return true;
+    }),
+    [contas, filterStatus, filterOrigem, filterFrom, filterTo]
   );
 
-  const totals = useMemo(() => {
-    const aberto = contas.filter((c) => c.status === "aberto").reduce((s, c) => s + c.valor, 0);
-    const recebido = contas.filter((c) => c.status === "recebido").reduce((s, c) => s + c.valor, 0);
-    const vencido = contas.filter((c) => c.status === "vencido").reduce((s, c) => s + c.valor, 0);
-    return { aberto, recebido, vencido };
-  }, [contas]);
-
-  const handleSave = (c: ContaReceber) => {
-    if (editing) {
-      setContas((prev) => prev.map((x) => (x.id === c.id ? c : x)));
-      toast({ title: "Conta atualizada" });
-    } else {
-      setContas((prev) => [...prev, { ...c, id: crypto.randomUUID() }]);
-      toast({ title: "Conta cadastrada" });
-    }
-    setOpen(false);
-    setEditing(null);
-  };
-
-  const handleDelete = () => {
-    if (!confirmId) return;
-    setContas((prev) => prev.filter((c) => c.id !== confirmId));
-    setConfirmId(null);
-    toast({ title: "Conta removida" });
-  };
+  const totals = useMemo(() => ({
+    aberto: contas.filter((c: any) => c.status === "aberto").reduce((s: number, c: any) => s + Number(c.valor), 0),
+    recebido: contas.filter((c: any) => c.status === "recebido").reduce((s: number, c: any) => s + Number(c.valor), 0),
+    vencido: contas.filter((c: any) => c.status === "vencido").reduce((s: number, c: any) => s + Number(c.valor), 0),
+  }), [contas]);
 
   return (
     <div className="space-y-6">
@@ -149,17 +133,17 @@ const ContasReceber = () => {
         <Input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} />
       </div>
 
-      {filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          Nenhuma conta cadastrada ainda. Clique em + Nova conta para começar.
-        </p>
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground text-center py-8">Carregando...</p>
+      ) : filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-8">Nenhuma conta encontrada.</p>
       ) : (
         <div className="rounded-lg border border-border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-card">
               <tr className="border-b border-border">
                 <th className="text-left p-3 font-medium">Descrição</th>
-                <th className="text-left p-3 font-medium">Cliente / Origem</th>
+                <th className="text-left p-3 font-medium">Origem</th>
                 <th className="text-left p-3 font-medium">Vencimento</th>
                 <th className="text-right p-3 font-medium">Valor</th>
                 <th className="text-left p-3 font-medium">Status</th>
@@ -167,26 +151,22 @@ const ContasReceber = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => (
+              {filtered.map((c: any) => (
                 <tr key={c.id} className="border-b border-border last:border-0 even:bg-muted/30">
                   <td className="p-3">{c.descricao}</td>
-                  <td className="p-3">{c.origem}</td>
+                  <td className="p-3">{c.origem || "—"}</td>
                   <td className="p-3">{formatDateBR(c.vencimento)}</td>
-                  <td className="p-3 text-right">{formatBRL(c.valor)}</td>
+                  <td className="p-3 text-right">{formatBRL(Number(c.valor))}</td>
                   <td className="p-3">
-                    <StatusBadge tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</StatusBadge>
+                    <StatusBadge tone={STATUS_TONE[c.status as ReceberStatus] || "warning"}>
+                      {STATUS_LABEL[c.status as ReceberStatus] || c.status}
+                    </StatusBadge>
                   </td>
                   <td className="p-3 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => { setEditing(c); setOpen(true); }}
-                      className="p-1.5 rounded hover:bg-accent text-muted-foreground"
-                    >
+                    <button onClick={() => { setEditing(c); setOpen(true); }} className="p-1.5 rounded hover:bg-accent text-muted-foreground">
                       <Edit2 size={14} />
                     </button>
-                    <button
-                      onClick={() => setConfirmId(c.id)}
-                      className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive"
-                    >
+                    <button onClick={() => setConfirmId(c.id)} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive">
                       <Trash2 size={14} />
                     </button>
                   </td>
@@ -201,13 +181,14 @@ const ContasReceber = () => {
         open={open}
         onOpenChange={(v) => { setOpen(v); if (!v) setEditing(null); }}
         initial={editing}
-        onSave={handleSave}
+        formas={FORMAS}
+        onSave={(form) => saveMutation.mutate(form)}
       />
 
       <ConfirmDialog
         open={!!confirmId}
         onOpenChange={(v) => !v && setConfirmId(null)}
-        onConfirm={handleDelete}
+        onConfirm={() => { if (confirmId) deleteMutation.mutate(confirmId); setConfirmId(null); }}
       />
     </div>
   );
@@ -216,27 +197,28 @@ const ContasReceber = () => {
 interface DialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  initial: ContaReceber | null;
-  onSave: (c: ContaReceber) => void;
+  initial: any | null;
+  formas: { value: string; label: string }[];
+  onSave: (form: any) => void;
 }
 
-const ContaReceberDialog = ({ open, onOpenChange, initial, onSave }: DialogProps) => {
-  const isEdit = !!initial;
+const ContaReceberDialog = ({ open, onOpenChange, initial, formas, onSave }: DialogProps) => {
+  const isEdit = !!initial?.id;
   const [descricao, setDescricao] = useState(initial?.descricao ?? "");
   const [origem, setOrigem] = useState(initial?.origem ?? "");
   const [valor, setValor] = useState(initial?.valor?.toString() ?? "");
   const [vencimento, setVencimento] = useState(initial?.vencimento ?? "");
-  const [forma, setForma] = useState<string>(initial?.formaPagamento ?? "Pix");
-  const [observacoes, setObservacoes] = useState(initial?.observacoes ?? "");
-  const [status, setStatus] = useState<ReceberStatus>(initial?.status ?? "aberto");
+  const [forma, setForma] = useState(initial?.forma_pagamento ?? "pix");
+  const [obs, setObs] = useState(initial?.observacoes ?? "");
+  const [status, setStatus] = useState(initial?.status ?? "aberto");
 
   useMemo(() => {
     setDescricao(initial?.descricao ?? "");
     setOrigem(initial?.origem ?? "");
     setValor(initial?.valor?.toString() ?? "");
     setVencimento(initial?.vencimento ?? "");
-    setForma(initial?.formaPagamento ?? "Pix");
-    setObservacoes(initial?.observacoes ?? "");
+    setForma(initial?.forma_pagamento ?? "pix");
+    setObs(initial?.observacoes ?? "");
     setStatus(initial?.status ?? "aberto");
   }, [initial, open]);
 
@@ -244,21 +226,17 @@ const ContaReceberDialog = ({ open, onOpenChange, initial, onSave }: DialogProps
     e.preventDefault();
     const v = parseFloat(valor);
     if (!descricao.trim()) return toast({ title: "Descrição obrigatória", variant: "destructive" });
-    if (!origem.trim()) return toast({ title: "Cliente / origem obrigatório", variant: "destructive" });
     if (isNaN(v) || v <= 0) return toast({ title: "Valor inválido", variant: "destructive" });
     if (!vencimento) return toast({ title: "Data prevista obrigatória", variant: "destructive" });
-    if (!isEdit && vencimento < todayISO())
-      return toast({ title: "Data não pode ser passada", variant: "destructive" });
-
     onSave({
-      id: initial?.id ?? "",
       descricao: descricao.trim(),
-      origem: origem.trim(),
+      origem: origem.trim() || null,
       valor: v,
       vencimento,
-      formaPagamento: forma as ContaReceber["formaPagamento"],
-      observacoes: observacoes.trim() || undefined,
+      forma_pagamento: forma,
+      observacoes: obs.trim() || null,
       status,
+      recebido_em: status === "recebido" ? new Date().toISOString() : null,
     });
   };
 
@@ -275,7 +253,7 @@ const ContaReceberDialog = ({ open, onOpenChange, initial, onSave }: DialogProps
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Cliente / Origem</label>
-            <Input value={origem} onChange={(e) => setOrigem(e.target.value)} required />
+            <Input value={origem} onChange={(e) => setOrigem(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -284,13 +262,7 @@ const ContaReceberDialog = ({ open, onOpenChange, initial, onSave }: DialogProps
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Data prevista</label>
-              <Input
-                type="date"
-                value={vencimento}
-                min={isEdit ? undefined : todayISO()}
-                onChange={(e) => setVencimento(e.target.value)}
-                required
-              />
+              <Input type="date" value={vencimento} onChange={(e) => setVencimento(e.target.value)} required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -298,14 +270,12 @@ const ContaReceberDialog = ({ open, onOpenChange, initial, onSave }: DialogProps
               <label className="text-sm font-medium mb-1 block">Forma de pagamento</label>
               <Select value={forma} onValueChange={setForma}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {FORMAS_PAGAMENTO.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                </SelectContent>
+                <SelectContent>{formas.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Status</label>
-              <Select value={status} onValueChange={(v) => setStatus(v as ReceberStatus)}>
+              <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="aberto">Em aberto</SelectItem>
@@ -317,7 +287,7 @@ const ContaReceberDialog = ({ open, onOpenChange, initial, onSave }: DialogProps
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Observações</label>
-            <Input value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+            <Input value={obs} onChange={(e) => setObs(e.target.value)} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
