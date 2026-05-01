@@ -15,7 +15,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (usuario: string, senha: string) => Promise<boolean>;
+  login: (email: string, senha: string) => Promise<boolean>;
   logout: () => Promise<void>;
 }
 
@@ -25,8 +25,6 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   logout: async () => {},
 });
-
-const EMAIL_DOMAIN = "qgmineiro.app";
 
 async function fetchUserProfile(authId: string): Promise<User | null> {
   const { data: barbeiro, error } = await supabase
@@ -78,8 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (usuario: string, senha: string): Promise<boolean> => {
-    const email = `${usuario}@${EMAIL_DOMAIN}`;
+  const login = async (email: string, senha: string): Promise<boolean> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
     return !error;
   };

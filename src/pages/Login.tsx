@@ -5,7 +5,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { Scissors } from "lucide-react";
 
 const Login = () => {
-  const [usuario, setUsuario] = useState("");
+  const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ const Login = () => {
     e.preventDefault();
     setErro("");
     setLoading(true);
-    const ok = await login(usuario, senha);
+    const ok = await login(email, senha);
     setLoading(false);
     if (ok) {
       navigate("/dashboard");
@@ -40,14 +40,14 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-sm font-medium mb-1 block">Usuário</label>
+            <label className="text-sm font-medium mb-1 block">Email</label>
             <input
-              type="text"
-              value={usuario}
-              onChange={(e) => setUsuario(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 rounded-lg border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-all"
-              placeholder="Digite seu usuário"
-              autoComplete="username"
+              placeholder="Digite seu email"
+              autoComplete="email"
             />
           </div>
           <div>
