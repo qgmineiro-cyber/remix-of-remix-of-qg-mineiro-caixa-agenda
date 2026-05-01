@@ -8,13 +8,16 @@ const Login = () => {
   const [usuario, setUsuario] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro("");
-    const ok = login(usuario, senha);
+    setLoading(true);
+    const ok = await login(usuario, senha);
+    setLoading(false);
     if (ok) {
       navigate("/dashboard");
     } else {
@@ -63,9 +66,10 @@ const Login = () => {
 
           <button
             type="submit"
-            className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
+            disabled={loading}
+            className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            Entrar
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
