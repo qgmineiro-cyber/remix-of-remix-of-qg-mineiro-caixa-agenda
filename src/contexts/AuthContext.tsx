@@ -66,7 +66,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      await supabase.rpc("ensure_current_user_profile");
+      await (supabase as any).rpc("ensure_current_user_profile");
 
       if (!mounted) return;
       const profile = await fetchUserProfile(authUserId);
@@ -96,7 +96,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (error || !data.user) return false;
 
-    await supabase.rpc("ensure_current_user_profile");
+    await (supabase as any).rpc("ensure_current_user_profile");
     const profile = await fetchUserProfile(data.user.id);
     setUser(profile);
 
