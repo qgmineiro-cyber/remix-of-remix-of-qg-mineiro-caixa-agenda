@@ -200,7 +200,7 @@ const Agenda = () => {
                         {ag.cliente_nome} — {ag.servico_id ? servicos.find((s) => s.id === ag.servico_id)?.nome || "Serviço" : "Serviço"}
                       </p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <StatusBadge tone={STATUS_TONE[ag.status] || "default"}>
+                        <StatusBadge tone={STATUS_TONE[ag.status] || "muted"}>
                           {STATUS_LABEL[ag.status] || ag.status}
                         </StatusBadge>
                         {isAdmin && ag.barbeiros && (
