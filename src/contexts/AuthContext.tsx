@@ -31,7 +31,7 @@ async function fetchUserProfile(authId: string): Promise<User | null> {
     .from("barbeiros")
     .select("id, nome, usuario, comissao, user_id")
     .eq("user_id", authId)
-    .single();
+    .maybeSingle();
 
   if (error || !barbeiro) return null;
 
@@ -39,7 +39,7 @@ async function fetchUserProfile(authId: string): Promise<User | null> {
     .from("user_roles")
     .select("role")
     .eq("user_id", authId)
-    .single();
+    .maybeSingle();
 
   return {
     id: barbeiro.id,
@@ -56,29 +56,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const profile = await fetchUserProfile(session.user.id);
-        setUser(profile);
-      }
-      setLoading(false);
-    });
+    let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const profile = await fetchUserProfile(session.user.id);
-        setUser(profile);
-      } else {
+    const syncSessionUser = async (authUserId?: string | null) => {
+      if (!mounted) return;
+
+      if (!authUserId) {
         setUser(null);
+        return;
       }
+
+      await (supabase as any).rpc("ensure_current_user_profile");
+
+      if (!mounted) return;
+      const profile = await fetchUserProfile(authUserId);
+      if (mounted) setUser(profile);
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => {
+        void syncSessionUser(session?.user?.id ?? null);
+      }, 0);
     });
 
-    return () => subscription.unsubscribe();
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      void syncSessionUser(session?.user?.id ?? null).finally(() => {
+        if (mounted) setLoading(false);
+      });
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, senha: string): Promise<boolean> => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-    return !error;
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: senha });
+
+    if (error || !data.user) return false;
+
+    await (supabase as any).rpc("ensure_current_user_profile");
+    const profile = await fetchUserProfile(data.user.id);
+    setUser(profile);
+
+    return !!profile;
   };
 
   const logout = async () => {
