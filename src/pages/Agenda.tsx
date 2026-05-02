@@ -13,7 +13,7 @@ import { toast } from "@/hooks/use-toast";
 
 const HORARIOS = Array.from({ length: 13 }, (_, i) => `${(8 + i).toString().padStart(2, "0")}:00`);
 
-const STATUS_TONE: Record<string, "warning" | "success" | "danger" | "default"> = {
+const STATUS_TONE: Record<string, "warning" | "success" | "danger" | "muted"> = {
   agendado: "warning",
   concluido: "success",
   cancelado: "danger",
