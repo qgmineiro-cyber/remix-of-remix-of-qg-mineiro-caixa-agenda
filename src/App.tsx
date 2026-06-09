@@ -14,6 +14,7 @@ import Financeiro from "@/pages/Financeiro";
 import Agenda from "@/pages/Agenda";
 import Servicos from "@/pages/Servicos";
 import Barbeiros from "@/pages/Barbeiros";
+import Metas from "@/pages/Metas";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const App = () => (
                 <Route path="/caixa" element={<ProtectedRoute><Caixa /></ProtectedRoute>} />
                 <Route path="/servicos" element={<ProtectedRoute><Servicos /></ProtectedRoute>} />
                 <Route path="/agenda" element={<ProtectedRoute><Agenda /></ProtectedRoute>} />
+                <Route path="/metas" element={<ProtectedRoute><Metas /></ProtectedRoute>} />
                 <Route path="/financeiro" element={<ProtectedRoute adminOnly><Financeiro /></ProtectedRoute>} />
                 <Route path="/barbeiros" element={<ProtectedRoute adminOnly><Barbeiros /></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />

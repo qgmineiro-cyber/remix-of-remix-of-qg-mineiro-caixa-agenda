@@ -460,6 +460,56 @@ export type Database = {
         }
         Relationships: []
       }
+      metas: {
+        Row: {
+          id: string
+          barbeiro_id: string
+          tipo: "dinheiro" | "cortes" | "produtos"
+          titulo: string
+          descricao: string | null
+          valor_meta: number
+          data_inicio: string
+          data_fim: string
+          criado_por: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          barbeiro_id: string
+          tipo: "dinheiro" | "cortes" | "produtos"
+          titulo: string
+          descricao?: string | null
+          valor_meta: number
+          data_inicio: string
+          data_fim: string
+          criado_por?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          barbeiro_id?: string
+          tipo?: "dinheiro" | "cortes" | "produtos"
+          titulo?: string
+          descricao?: string | null
+          valor_meta?: number
+          data_inicio?: string
+          data_fim?: string
+          criado_por?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metas_barbeiro_id_fkey"
+            columns: ["barbeiro_id"]
+            isOneToOne: false
+            referencedRelation: "barbeiros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string

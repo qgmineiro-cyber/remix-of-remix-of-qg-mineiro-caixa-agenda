@@ -11,6 +11,7 @@ import {
   Calendar,
   ClipboardList,
   Users,
+  Target,
 } from "lucide-react";
 
 const Layout = ({ children }: { children: ReactNode }) => {
@@ -36,6 +37,7 @@ const Layout = ({ children }: { children: ReactNode }) => {
     { path: "/caixa", label: "Caixa", icon: DollarSign },
     { path: "/servicos", label: "Serviços", icon: ClipboardList },
     { path: "/agenda", label: "Agenda", icon: Calendar },
+    { path: "/metas", label: "Metas", icon: Target },
     ...(isAdmin
       ? [
           { path: "/financeiro", label: "Financeiro", icon: DollarSign },
